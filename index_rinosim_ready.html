@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RinoSim — 2D Burun Simülasyon MVP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .panel { background:#fff; border-radius:1rem; box-shadow:0 10px 30px rgba(2,6,23,0.08); padding:1rem; }
+    canvas { image-rendering:auto; }
+    .range { accent-color:#2563eb; }
+  </style>
+</head>
+<body class="bg-slate-50">
+  <header class="max-w-6xl mx-auto p-4 md:p-6">
+    <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800">RinoSim — 2D Burun Simülasyon MVP</h1>
+    <p class="text-slate-600 mt-1">Yalnızca eğitim/danışma amaçlı görsel simülasyondur; cerrahi sonucu garanti etmez.</p>
+  </header>
+
+  <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 p-4 md:p-6">
+    <section class="panel lg:col-span-8">
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div class="flex items-center gap-3">
+          <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 cursor-pointer">
+            <input id="file" type="file" accept="image/*" class="hidden"/>
+            <span class="font-medium">Fotoğraf Yükle</span>
+          </label>
+          <button id="btnReset" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700">Sıfırla</button>
+          <button id="btnExport" class="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white">Görseli İndir</button>
+        </div>
+        <div class="flex items-center gap-4 text-sm">
+          <label class="inline-flex items-center gap-2"><input id="cbBeforeAfter" type="checkbox" class="accent-blue-600"><span>Önce/Sonra böl</span></label>
+          <label class="inline-flex items-center gap-2"><input id="cbShowLm" type="checkbox" class="accent-blue-600"><span>İşaret noktaları</span></label>
+          <label class="inline-flex items-center gap-2"><input id="cbShowMask" type="checkbox" class="accent-blue-600"><span>Maske</span></label>
+          <label class="inline-flex items-center gap-2"><input id="cbDebug" type="checkbox" class="accent-blue-600"><span>Debug</span></label>
+        </div>
+      </div>
+      <div class="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+        <canvas id="canvas" class="w-full h-auto block"></canvas>
+        <canvas id="overlay" class="absolute inset-0 pointer-events-none"></canvas>
+      </div>
+      <p id="status" class="mt-3 text-sm text-slate-600">Hazır.</p>
+    </section>
+
+    <aside class="panel lg:col-span-4 space-y-4">
+      <h2 class="text-lg font-bold text-slate-800">Parametreler</h2>
+      <div class="space-y-3">
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Köprü Genişliği (bridge)</span> <span><span id="lblBridge">0</span></span></label>
+          <input id="slBridge" type="range" min="-50" max="50" value="0" class="w-full range"/>
+          <p class="text-xs text-slate-500">(-) daraltır, (+) genişletir. Lokal x-ölçek.</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Alar Tabanı (kanat) Daraltma</span> <span id="lblAlar">0</span></label>
+          <input id="slAlar" type="range" min="-40" max="40" value="0" class="w-full range"/>
+          <p class="text-xs text-slate-500">(-) daraltır / (+) genişletir. Yan maske odaklı x-ölçek.</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Uç Rotasyonu (°)</span> <span id="lblTipRot">0°</span></label>
+          <input id="slTipRot" type="range" min="-12" max="12" value="0" class="w-full range"/>
+          <p class="text-xs text-slate-500">Saat yönü (+), saat tersi (−). Uç çevresine lokal dönüş.</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Uç Projeksiyonu</span> <span id="lblTipProj">0</span></label>
+          <input id="slTipProj" type="range" min="-40" max="40" value="0" class="w-full range"/>
+          <p class="text-xs text-slate-500">Burun ucu ileri/geri (lokal y-öteleme).</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Dorsal (hump) Düzleştirme</span> <span id="lblHump">0</span></label>
+          <input id="slHump" type="range" min="0" max="60" value="0" class="w-full range"/>
+          <p class="text-xs text-slate-500">Köprü şeridinde hafif y-sıkıştırma (optik düzleştirme).</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm text-slate-700"><span>Maske Yumuşatma (px)</span> <span id="lblFeather">1</span></label>
+          <input id="slFeather" type="range" min="0" max="8" value="1" class="w-full range"/>
+          <p class="text-xs text-slate-500">Kenar geçişlerini doğal göstermek için blur.</p>
+        </div>
+      </div>
+      <div class="pt-3 border-t border-slate-200">
+        <h3 class="font-semibold text-slate-800">İpuçları</h3>
+        <ul class="text-sm text-slate-600 list-disc pl-5 space-y-1">
+          <li>Yüksek çözünürlüklü, önden çekim fotoğraf kullanın.</li>
+          <li>Parametreleri küçük adımlarla artırın (±5–10).</li>
+          <li>Simülasyon fikir vermek içindir; tıbbi karar yerine geçmez.</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="max-w-6xl mx-auto p-4 md:p-6 text-center text-xs text-slate-500">
+    © 2025 RinoSim MVP — Eğitim ve danışma amaçlı.
+  </footer>
+
+  <script type="module">
+    import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9";
+    const RINOSIM_ASSETS_BASE = "https://korayumit.github.io/burun";
+    const els = {
+      file: document.getElementById('file'),
+      canvas: document.getElementById('canvas'),
+      overlay: document.getElementById('overlay'),
+      status: document.getElementById('status'),
+      btnReset: document.getElementById('btnReset'),
+      btnExport: document.getElementById('btnExport'),
+      cbBeforeAfter: document.getElementById('cbBeforeAfter'),
+      cbShowLm: document.getElementById('cbShowLm'),
+      cbShowMask: document.getElementById('cbShowMask'),
+      cbDebug: document.getElementById('cbDebug'),
+      slBridge: document.getElementById('slBridge'),
+      slAlar: document.getElementById('slAlar'),
+      slTipRot: document.getElementById('slTipRot'),
+      slTipProj: document.getElementById('slTipProj'),
+      slHump: document.getElementById('slHump'),
+      slFeather: document.getElementById('slFeather'),
+      lblBridge: document.getElementById('lblBridge'),
+      lblAlar: document.getElementById('lblAlar'),
+      lblTipRot: document.getElementById('lblTipRot'),
+      lblTipProj: document.getElementById('lblTipProj'),
+      lblHump: document.getElementById('lblHump'),
+      lblFeather: document.getElementById('lblFeather'),
+    };
+    let faceLandmarker=null, baseImg=null;
+    let baseCanvas=document.createElement('canvas'), baseCtx=baseCanvas.getContext('2d');
+    let lm=null, hull=null;
+    const NOSE_IDXS=[1,2,4,5,6,94,97,98,168,197,195,49,50,61,279,303,291,236,456,281,275,45];
+    const state={bridge:0,alar:0,tipRot:0,tipProj:0,hump:0,feather:1};
+    function setStatus(s){ els.status.textContent=s; console.log(s); }
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    function updateLabels(){ els.lblBridge.textContent=state.bridge; els.lblAlar.textContent=state.alar; els.lblTipRot.textContent=`${state.tipRot}\u00B0`; els.lblTipProj.textContent=state.tipProj; els.lblHump.textContent=state.hump; els.lblFeather.textContent=state.feather; }
+    function canvasResizeToImage(img){ const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height; [els.canvas,els.overlay,baseCanvas].forEach(c=>{c.width=w;c.height=h;}); }
+    async function initLandmarker(){
+      if(faceLandmarker) return; setStatus('Model yükleniyor...');
+      const wasmBase=`${RINOSIM_ASSETS_BASE}/wasm`; const modelPath=`${RINOSIM_ASSETS_BASE}/face_landmarker.task`;
+      const fileset=await FilesetResolver.forVisionTasks(wasmBase);
+      faceLandmarker=await FaceLandmarker.createFromOptions(fileset,{baseOptions:{modelAssetPath:modelPath},runningMode:'IMAGE',numFaces:1});
+      setStatus('Hazır. Fotoğraf yükleyin.');
+    }
+    async function onFile(e){
+      const file=e.target.files[0]; if(!file) return;
+      await initLandmarker(); if(!faceLandmarker) return;
+      const img=new Image(); img.onload=async()=>{
+        baseImg=img; canvasResizeToImage(img); baseCtx.clearRect(0,0,baseCanvas.width,baseCanvas.height); baseCtx.drawImage(img,0,0);
+        const res=await faceLandmarker.detect(img);
+        if(!res.faceLandmarks?.length){ setStatus('Yüz bulunamadı. Önden çekim deneyin.'); return; }
+        lm=res.faceLandmarks[0].map(p=>({x:p.x*img.width,y:p.y*img.height,z:p.z}));
+        const nosePts=NOSE_IDXS.map(i=>lm[i]).filter(Boolean); hull=convexHull(nosePts);
+        draw(); setStatus('Yüklendi. Parametreleri ayarlayın.');
+      }; img.src=URL.createObjectURL(file);
+    }
+    function convexHull(points){ if(points.length<3) return points.slice(); const pts=points.slice().sort((a,b)=>a.x===b.x?a.y-b.y:a.x-b.x);
+      const cross=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+      const lower=[]; for(const p of pts){ while(lower.length>=2&&cross(lower.at(-2),lower.at(-1),p)<=0) lower.pop(); lower.push(p); }
+      const upper=[]; for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; while(upper.length>=2&&cross(upper.at(-2),upper.at(-1),p)<=0) upper.pop(); upper.push(p); }
+      upper.pop(); lower.pop(); return lower.concat(upper); }
+    function pathFromPoints(ctx,pts){ if(!pts?.length) return; ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x,pts[i].y); ctx.closePath(); }
+    function getCenter(pts){ let x=0,y=0; pts.forEach(p=>{x+=p.x;y+=p.y}); return {x:x/pts.length,y:y/pts.length}; }
+    function circlePath(ctx,cx,cy,r){ ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.closePath(); }
+    function drawOverlay(){ const o=els.overlay.getContext('2d'); o.clearRect(0,0,els.overlay.width,els.overlay.height); if(!lm) return;
+      if(els.cbShowLm.checked){ o.fillStyle='rgba(59,130,246,0.9)'; for(const p of lm){ o.fillRect(p.x-1,p.y-1,2,2);} }
+      if(els.cbShowMask.checked&&hull){ o.save(); o.globalAlpha=.25; o.fillStyle='#22c55e'; pathFromPoints(o,hull); o.fill(); o.restore(); }
+      if(els.cbDebug.checked&&hull){ const c=getCenter(hull); o.fillStyle='rgba(244,63,94,0.9)'; o.beginPath(); o.arc(c.x,c.y,4,0,Math.PI*2); o.fill(); if(lm[1]){ o.beginPath(); o.arc(lm[1].x,lm[1].y,4,0,Math.PI*2); o.fill(); } }
+    }
+    function draw(){ const ctx=els.canvas.getContext('2d'); ctx.clearRect(0,0,els.canvas.width,els.canvas.height); if(!baseImg){ drawOverlay(); return; }
+      if(els.cbBeforeAfter.checked){ const tmp=document.createElement('canvas'); tmp.width=baseCanvas.width; tmp.height=baseCanvas.height; const tctx=tmp.getContext('2d'); tctx.drawImage(baseCanvas,0,0); applyEdits(tctx);
+        const mid=Math.floor(baseCanvas.width/2); ctx.drawImage(baseCanvas,0,0,mid,baseCanvas.height,0,0,mid,baseCanvas.height);
+        ctx.drawImage(tmp,mid,0,baseCanvas.width-mid,baseCanvas.height,mid,0,baseCanvas.width-mid,baseCanvas.height);
+        ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(mid+0.5,0); ctx.lineTo(mid+0.5,baseCanvas.height); ctx.stroke();
+      } else { ctx.drawImage(baseCanvas,0,0); applyEdits(ctx); } drawOverlay(); }
+    function applyEdits(ctx){ if(!lm||!hull) return; const feather=state.feather;
+      function maskedTransform(drawCb,maskCb){ ctx.save(); ctx.beginPath(); maskCb(ctx); ctx.clip(); if(feather>0){ ctx.filter=`blur(${feather}px)`; } drawCb(ctx); ctx.filter='none'; ctx.restore(); }
+      if(state.bridge!==0){ const c=getCenter(hull),k=1+(state.bridge/600); maskedTransform(g=>{g.translate(c.x,c.y); g.scale(k,1); g.translate(-c.x,-c.y); g.drawImage(baseCanvas,0,0);}, g=>pathFromPoints(g,hull)); }
+      if(state.alar!==0){ const w=bbox(hull).w,r=Math.max(24,w*0.12),left=leftmost(hull),right=rightmost(hull),k=1+(state.alar/600);
+        maskedTransform(g=>{g.translate(left.x,left.y); g.scale(k,1); g.translate(-left.x,-left.y); g.drawImage(baseCanvas,0,0);}, g=>circlePath(g,left.x,left.y,r));
+        maskedTransform(g=>{g.translate(right.x,right.y); g.scale(k,1); g.translate(-right.x,-right.y); g.drawImage(baseCanvas,0,0);}, g=>circlePath(g,right.x,right.y,r)); }
+      if(state.tipRot!==0&&lm[1]){ const tip=lm[1],r=Math.max(22,bbox(hull).w*0.14),rad=state.tipRot*Math.PI/180; maskedTransform(g=>{g.translate(tip.x,tip.y); g.rotate(rad); g.translate(-tip.x,-tip.y); g.drawImage(baseCanvas,0,0);}, g=>circlePath(g,tip.x,tip.y,r)); }
+      if(state.tipProj!==0&&lm[1]){ const tip=lm[1],r=Math.max(22,bbox(hull).w*0.14),dy=state.tipProj; maskedTransform(g=>{g.translate(0,dy); g.drawImage(baseCanvas,0,0);}, g=>circlePath(g,tip.x,tip.y,r)); }
+      if(state.hump>0){ const b=bbox(hull),stripW=clamp(b.w*0.28,24,90),stripH=b.h*0.85,cx=b.x+b.w/2,top=b.y+b.h*0.05,k=1-(state.hump/400);
+        maskedTransform(g=>{g.translate(cx,top); g.scale(1,k); g.translate(-cx,-top); g.drawImage(baseCanvas,0,0);}, g=>{g.beginPath(); g.rect(cx-stripW/2,top,stripW,stripH); g.closePath();}); }
+    }
+    function bbox(pts){ let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity; for(const p of pts){ if(p.x<minx)minx=p.x; if(p.y<miny)miny=p.y; if(p.x>maxx)maxx=p.x; if(p.y>maxy)maxy=p.y; } return {x:minx,y:miny,w:maxx-minx,h:maxy-miny}; }
+    function leftmost(pts){ return pts.reduce((a,b)=> b.x<a.x?b:a); }
+    function rightmost(pts){ return pts.reduce((a,b)=> b.x>a.x?b:a); }
+    els.file.addEventListener('change', onFile);
+    els.btnReset.addEventListener('click', ()=>{ state.bridge=0; state.alar=0; state.tipRot=0; state.tipProj=0; state.hump=0; state.feather=1; ['slBridge','slAlar','slTipRot','slTipProj','slHump','slFeather'].forEach(id=>document.getElementById(id).value=0); updateLabels(); draw(); });
+    els.btnExport.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='rinosim.png'; a.href=els.canvas.toDataURL('image/png'); a.click(); });
+    ['slBridge','slAlar','slTipRot','slTipProj','slHump','slFeather'].forEach(id=>document.getElementById(id).addEventListener('input', e=>{ const k={slBridge:'bridge',slAlar:'alar',slTipRot:'tipRot',slTipProj:'tipProj',slHump:'hump',slFeather:'feather'}[id]; state[k]=parseInt(e.target.value); updateLabels(); draw(); }));
+    ['cbBeforeAfter','cbShowLm','cbShowMask','cbDebug'].forEach(id=>document.getElementById(id).addEventListener('change', draw));
+    updateLabels();
+  </script>
+</body>
+</html>
